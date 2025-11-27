@@ -34,6 +34,13 @@ def capture_frame():
 	shutil.move(last_img, new_img)
 
 def start_live_stream():
+	# ffmpeg -n -i video.mp4 -i logo.png -filter_complex "[0:v]setsar=sar=1[v];[v][1]blend=all_mode='overlay':all_opacity=0.7" -movflags +faststart tmb/video.mp4
+	# ffmpeg -i /dev/video0 -vf "transpose=1" -f v4l2 /dev/video1
+	# ffmpeg -f v4l2 -i /dev/video0 -vf "rotate=PI" -f v4l2 /dev/video1
+	# ffmpeg -f wav pipe:1
+	# mkfifo /tmp/vlc_pipe
+	# vlc --sub-filter logo --logo-file icon.png video.avi
+	# vlc your_video.mp4 --vout-filter=transform --transform-type=180
 	return
 
 def stop_live_stream():
