@@ -23,6 +23,7 @@ class STATE(Enum):
 	CAPTURE = 2
 
 program_state = STATE.PENDING
+live_process = False
 
 def capture_frame():
 	global project_frame
@@ -31,20 +32,32 @@ def capture_frame():
 	last_img="%s/last_001.png" % project_dir
 	subprocess.run(["ffmpeg", "-f", "v4l2", "-i", "/dev/video0", "-frames:v", "1", "%s/last_%%03d.png" % project_dir])
 	new_img="%s/frame_%05d.png" % (project_dir, project_frame)
+	print("MOVE %s to %s" % (last_img, new_img))
 	shutil.move(last_img, new_img)
 
 def start_live_stream():
-	# ffmpeg -n -i video.mp4 -i logo.png -filter_complex "[0:v]setsar=sar=1[v];[v][1]blend=all_mode='overlay':all_opacity=0.7" -movflags +faststart tmb/video.mp4
-	# ffmpeg -i /dev/video0 -vf "transpose=1" -f v4l2 /dev/video1
-	# ffmpeg -f v4l2 -i /dev/video0 -vf "rotate=PI" -f v4l2 /dev/video1
-	# ffmpeg -f wav pipe:1
-	# mkfifo /tmp/vlc_pipe
-	# vlc --sub-filter logo --logo-file icon.png video.avi
-	# vlc your_video.mp4 --vout-filter=transform --transform-type=180
+	global project_frame
+	global live_process
+
+	print("START STREAM")
+	last_img="%s/frame_%05d.png" % (project_dir, project_frame)
+	overlay_img="%s/overlay.png" % (project_dir)
+	subprocess.run(["magick", last_img, "-gravity", "Center" , "-crop", "1440x806+0+0", "-rotate", "180", "+repage", overlay_img])
+	live_process = subprocess.Popen(["nvlc", "--sub-filter", "logo", "--logo-file", overlay_img, \
+		"--logo-opacity", "50", "--logo-x", "80", "--logo-y", "45", "v4l2:///dev/video0", \
+		"--video-filter=transform", "--transform-type=180"], \
+		stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+	# nvlc --sub-filter logo --logo-file overlay.png --logo-opacity 50 --logo-x 80 --logo-y 45 v4l2:///dev/video0 --video-filter=transform --transform-type=180
+
 	return
 
 def stop_live_stream():
-	return
+	global live_process
+
+	if(live_process):
+		live_process.kill()
+		live_process = False
 
 def change_state(next_state):
 	global program_state
@@ -60,13 +73,14 @@ def change_state(next_state):
 			capture_frame()
 			program_state = STATE.LIVE
 			start_live_stream()
-			
-
+		if(next_state == STATE.PENDING):
+			stop_live_stream()
+			program_state = STATE.PENDING
 
 def restore_project_frame():
 	global project_frame
 
-	i=0
+	i=1
 	while i<1000000:
 		test_img="%s/frame_%05d.png" % (project_dir, i)
 		if os.path.exists(test_img):
@@ -83,7 +97,7 @@ def restore_project_frame():
 def btn_white(channel):
 	if GPIO.input(channel) == GPIO.LOW:
 		print("White ▼  at " + str(datetime.datetime.now()))
-		capture_frame()
+		change_state(STATE.CAPTURE)
 	else:
 		print("White  ▲ at " + str(datetime.datetime.now()))
 # GPIO 17
@@ -140,6 +154,8 @@ try:
 	change_state(STATE.LIVE)
 
 	message = input('\nPress Enter to exit.\n')
+
+	change_state(STATE.PENDING)
  
 finally:
     GPIO.cleanup()
