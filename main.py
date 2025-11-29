@@ -83,7 +83,7 @@ def start_live_stream():
 	update_overlay()
 	overlay_img="%s/overlay.png" % (project_dir)
 	live_process = subprocess.Popen(["cvlc", "--extraintf", "rc", "--sub-filter", "logo", "--logo-file", overlay_img, \
-		"--logo-opacity", "127", "--logo-position", "0", "v4l2:///dev/video0", "v4l2:///dev/video0", \
+		"--logo-opacity", "127", "--logo-position", "0", "v4l2:///dev/video0", \
 		"--video-filter=transform", "--transform-type=180"], \
 		stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.PIPE)
 	#cvlc --extraintf rc --sub-filter logo --logo-file overlay.png --logo-opacity 50 --logo-x 80 --logo-y 45 v4l2:///dev/video0
