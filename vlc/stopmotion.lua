@@ -251,13 +251,9 @@ function playlist_sort(name,client,arg)
 end
 
 function logo_update(name, client, value)
-    client:append("LOGO OFF")
     local vout = vlc.object.vout()
     if vout then
-	    client:append("VOUT FOUND")
 	    vlc.var.trigger_callback(vout, "logo-file")
-    else
-	    client:append("VOUT NOT FOUND")
     end
 end
 

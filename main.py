@@ -45,13 +45,20 @@ def find_vlc_capture():
 	return ""
 
 def update_overlay():
+	global live_process
 	global project_frame
+
+	if not live_process:
+		return
+	
+	if project_frame == 0:
+		return
 
 	last_img="%s/frame_%05d.png" % (project_dir, project_frame)
 	overlay_img="%s/overlay.png" % (project_dir)
-	#subprocess.run(["magick", last_img, "-gravity", "Center" , "-crop", "1440x806+0+0", "-rotate", "180", "+repage", overlay_img])
 	subprocess.run(["magick", last_img, "-gravity", "Center" , "-crop", "1440x806+0+0", "+repage", overlay_img])
-	print("Created new overlay from %s" % last_img)
+	live_process.stdin.write(b"logo_update\n")
+	live_process.stdin.flush()
 
 def capture_frame():
 	global live_process
@@ -69,23 +76,21 @@ def capture_frame():
 
 	project_frame = project_frame + 1
 	new_img="%s/frame_%05d.png" % (project_dir, project_frame)
-	print("MOVE %s to %s" % (last_img, new_img))
 	shutil.move(last_img, new_img)
 	update_overlay()
-	live_process.stdin.write(b"next\n")
-	live_process.stdin.flush()
 
 def start_live_stream():
 	global project_frame
 	global live_process
 
 	print("START STREAM")
-	update_overlay()
 	overlay_img="%s/overlay.png" % (project_dir)
-	live_process = subprocess.Popen(["cvlc", "--extraintf", "rc", "--sub-filter", "logo", "--logo-file", overlay_img, \
+	shutil.copy("./assets/blank-overlay.png", overlay_img)
+	live_process = subprocess.Popen(["cvlc", "-I", "luaintf", "--lua-intf", "stopmotion", "--sub-filter", "logo", "--logo-file", overlay_img, \
 		"--logo-opacity", "127", "--logo-position", "0", "v4l2:///dev/video0", \
 		"--video-filter=transform", "--transform-type=180"], \
 		stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.PIPE)
+	update_overlay()
 	#cvlc --extraintf rc --sub-filter logo --logo-file overlay.png --logo-opacity 50 --logo-x 80 --logo-y 45 v4l2:///dev/video0
 	# + snapshot
 
@@ -175,6 +180,9 @@ def btn_black(channel):
 
 
 try:
+	vlc_lua_intf_dir = os.path.expanduser("~/.local/share/vlc/lua/intf")
+	shutil.copy("./vlc/stopmotion.lua", vlc_lua_intf_dir)
+	os.makedirs(vlc_lua_intf_dir, exist_ok=True)
 	os.makedirs(capture_dir, exist_ok=True)
 	os.makedirs(project_dir, exist_ok=True)
 	restore_project_frame()
