@@ -23,6 +23,7 @@ class STATE(Enum):
 	PENDING = 0
 	LIVE = 1
 	CAPTURE = 2
+	PLAYBACK = 3
 
 program_state = STATE.PENDING
 live_process = False
@@ -109,6 +110,19 @@ def restart_live_stream():
 	stop_live_stream()
 	start_live_stream()
 
+def compile_frames():
+	framerate=12
+	frame_template="%s/frame_%%05d.png" % (project_dir)
+	preview_mp4 = "%s/video.mp4" % (project_dir)
+	subprocess.run(["ffmpeg", "-y", "-framerate", str(framerate), "-i", frame_template, "-c:v", "h264_v4l2m2m", "-b:v", "2M", preview_mp4])
+
+def play_video():
+	preview_mp4 = "%s/video.mp4" % (project_dir)
+	live_process = subprocess.Popen(["cvlc", "--play-and-exit", "-I", "luaintf", "--lua-intf", "stopmotion",  \
+		preview_mp4, "--video-filter=transform", "--transform-type=180"], \
+		stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.PIPE)
+	live_process.wait()
+
 def change_state(next_state):
 	global program_state
 
@@ -119,10 +133,16 @@ def change_state(next_state):
 	if(program_state == STATE.LIVE):
 		if(next_state == STATE.CAPTURE):
 			capture_frame()
-			#restart_live_stream()
 		if(next_state == STATE.PENDING):
 			stop_live_stream()
 			program_state = STATE.PENDING
+		if(next_state == STATE.PLAYBACK):
+			compile_frames()
+			stop_live_stream()
+			program_state = STATE.PLAYBACK
+			play_video()
+			program_state = STATE.LIVE
+			start_live_stream()
 
 def restore_project_frame():
 	global project_frame
@@ -156,6 +176,7 @@ def btn_yellow(channel):
 # GPIO 23
 def btn_green(channel):
 	if GPIO.input(channel) == GPIO.LOW:
+		change_state(STATE.PLAYBACK)
 		print("Green ▼  at " + str(datetime.datetime.now()))
 	else:
 		print("Green  ▲ at " + str(datetime.datetime.now()))
