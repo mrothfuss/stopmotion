@@ -32,17 +32,18 @@ def find_vlc_capture():
 	snapshot_dir = os.path.expanduser("~")
 	prefix = "vlcsnap-"
 	ext = ".png"
+	sleep_duration = 0.05
 
 	pattern = os.path.join(snapshot_dir, f"{prefix}*{ext}")
-	i=1
-	while i<5:
+	slept=0
+	while slept<5:
 		files = glob.glob(pattern)
 
 		if files:
 			latest_file = max(files, key=os.path.getmtime)
 			return latest_file
-		time.sleep(1)
-		i = i + 1
+		time.sleep(sleep_duration)
+		slept = slept + sleep_duration
 	return ""
 
 def update_overlay():
@@ -87,15 +88,13 @@ def start_live_stream():
 	print("START STREAM")
 	overlay_img="%s/overlay.png" % (project_dir)
 	shutil.copy("./assets/blank-overlay.png", overlay_img)
+	subprocess.run(["v4l2-ctl", "--set-ctrl", "auto_exposure=1,focus_automatic_continuous=0"])
 	live_process = subprocess.Popen(["cvlc", "-I", "luaintf", "--lua-intf", "stopmotion", "--sub-filter", "logo", "--logo-file", overlay_img, \
 		"--logo-opacity", "127", "--logo-position", "0", "v4l2:///dev/video0", \
 		"--video-filter=transform", "--transform-type=180"], \
 		stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.PIPE)
 	update_overlay()
-	#cvlc --extraintf rc --sub-filter logo --logo-file overlay.png --logo-opacity 50 --logo-x 80 --logo-y 45 v4l2:///dev/video0
-	# + snapshot
-
-	# nvlc --sub-filter logo --logo-file overlay.png --logo-opacity 50 --logo-x 80 --logo-y 45 v4l2:///dev/video0 --video-filter=transform --transform-type=180
+	subprocess.run(["v4l2-ctl", "--set-ctrl", "focus_absolute=240,saturation=80,brightness=30,contrast=64,zoom_absolute=4"])
 
 	return
 
