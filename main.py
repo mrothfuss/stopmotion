@@ -10,6 +10,7 @@ import sys
 import shutil
 import subprocess
 
+from threading import Thread
 from enum import Enum
 
 # nvlc v4l2:///dev/video0
@@ -27,6 +28,17 @@ class STATE(Enum):
 
 program_state = STATE.PENDING
 live_process = False
+sfx_process = False
+overlay_thread = False
+
+def play_sfx(path):
+	global sfx_process
+
+	if(sfx_process):
+		sfx_process.kill()
+		sfx_process = False
+
+	sfx_process = subprocess.Popen(["aplay", path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
 
 def find_vlc_capture():
 	snapshot_dir = os.path.expanduser("~")
@@ -46,7 +58,7 @@ def find_vlc_capture():
 		slept = slept + sleep_duration
 	return ""
 
-def update_overlay():
+def update_overlay_thread():
 	global live_process
 	global project_frame
 
@@ -55,12 +67,31 @@ def update_overlay():
 	
 	if project_frame == 0:
 		return
+	
+	while True:
+		draw_frame = project_frame
 
-	last_img="%s/frame_%05d.png" % (project_dir, project_frame)
-	overlay_img="%s/overlay.png" % (project_dir)
-	subprocess.run(["magick", last_img, "-gravity", "Center" , "-crop", "1440x806+0+0", "+repage", overlay_img])
-	live_process.stdin.write(b"logo_update\n")
-	live_process.stdin.flush()
+		last_img="%s/frame_%05d.png" % (project_dir, draw_frame)
+		overlay_img="%s/overlay.png" % (project_dir)
+		subprocess.run(["magick", last_img, "-gravity", "Center" , "-crop", "1440x806+0+0", "+repage", overlay_img])
+		
+		if project_frame == draw_frame:
+			if live_process:
+				live_process.stdin.write(b"logo_update\n")
+				live_process.stdin.flush()
+			return
+
+
+def update_overlay():
+	global overlay_thread
+
+	if overlay_thread:
+		if overlay_thread.is_alive():
+			return
+		overlay_thread.join()
+	
+	overlay_thread = Thread(target = update_overlay_thread)
+	overlay_thread.start()
 
 def capture_frame():
 	global live_process
@@ -69,6 +100,7 @@ def capture_frame():
 	if not live_process:
 		return
 
+	play_sfx("./assets/camera-shutter.wav")
 	live_process.stdin.write(b"snapshot\n")
 	live_process.stdin.flush()
 	last_img = find_vlc_capture()
