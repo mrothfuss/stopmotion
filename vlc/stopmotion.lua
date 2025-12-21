@@ -250,6 +250,22 @@ function playlist_sort(name,client,arg)
     end
 end
 
+function logo_solid(name, client, value)
+    local vout = vlc.object.vout()
+    if vout then
+            vlc.var.set(vout, "logo-opacity", 255 )
+	    vlc.var.trigger_callback(vout, "logo-opacity")
+    end
+end
+
+function logo_transparent(name, client, value)
+    local vout = vlc.object.vout()
+    if vout then
+            vlc.var.set(vout, "logo-opacity", 127 )
+	    vlc.var.trigger_callback(vout, "logo-opacity")
+    end
+end
+
 function logo_update(name, client, value)
     local vout = vlc.object.vout()
     if vout then
@@ -623,6 +639,8 @@ commands_ordered = {
     { "strack"; { func = strack; args = "[X]"; help = "set/get subtitle track" } };
     { "hotkey"; { func = hotkey; args = "[hotkey name]"; help = "simulate hotkey press"; adv = true; aliases = { "key" } } };
     { "logo_update"; { func = logo_update; help = "Reload Logo File" } };
+    { "logo_solid"; { func = logo_solid; help = "Solid Logo File" } };
+    { "logo_transparent"; { func = logo_transparent; help = "Transparent Logo File" } };
     { "" };
     { "vlm"; { func = load_vlm; help = "load the VLM" } };
     { "set"; { func = set_env; args = "[var [value]]"; help = "set/get env var"; adv = true } };

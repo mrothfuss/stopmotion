@@ -34,11 +34,12 @@ overlay_thread = False
 def play_sfx(path):
 	global sfx_process
 
-	if(sfx_process):
+	if sfx_process:
 		sfx_process.kill()
 		sfx_process = False
 
 	sfx_process = subprocess.Popen(["aplay", path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
+
 
 def find_vlc_capture():
 	snapshot_dir = os.path.expanduser("~")
@@ -57,6 +58,26 @@ def find_vlc_capture():
 		time.sleep(sleep_duration)
 		slept = slept + sleep_duration
 	return ""
+
+def show_msg(path):
+	global live_process
+	global overlay_thread
+
+	if not live_process:
+		return
+
+	if overlay_thread:
+		overlay_thread.join()
+
+	if path:
+		overlay_img="%s/overlay.png" % (project_dir)
+		shutil.copy(path, overlay_img)
+		live_process.stdin.write(b"logo_solid\n")
+		live_process.stdin.write(b"logo_update\n")
+		live_process.stdin.flush()
+	else:
+		live_process.stdin.write(b"logo_transparent\n")
+		update_overlay()
 
 def update_overlay_thread():
 	global live_process
@@ -142,10 +163,16 @@ def restart_live_stream():
 	start_live_stream()
 
 def compile_frames():
+	global project_frame
+
 	framerate=12
 	frame_template="%s/frame_%%05d.png" % (project_dir)
 	preview_mp4 = "%s/video.mp4" % (project_dir)
-	subprocess.run(["ffmpeg", "-y", "-framerate", str(framerate), "-i", frame_template, "-c:v", "h264_v4l2m2m", "-b:v", "2M", preview_mp4])
+	last_img="%s/frame_%05d.png" % (project_dir, project_frame)
+
+	if os.stat(last_img).st_mtime > os.stat(preview_mp4).st_mtime:
+		print("REPLACING VIDEO")
+		subprocess.run(["ffmpeg", "-y", "-framerate", str(framerate), "-i", frame_template, "-c:v", "h264_v4l2m2m", "-b:v", "2M", preview_mp4])
 
 def play_video():
 	preview_mp4 = "%s/video.mp4" % (project_dir)
@@ -163,17 +190,20 @@ def change_state(next_state):
 			start_live_stream()
 	if(program_state == STATE.LIVE):
 		if(next_state == STATE.CAPTURE):
+			program_state = STATE.CAPTURE
 			capture_frame()
+			program_state = STATE.LIVE
 		if(next_state == STATE.PENDING):
-			stop_live_stream()
 			program_state = STATE.PENDING
+			stop_live_stream()
 		if(next_state == STATE.PLAYBACK):
+			program_state = STATE.PLAYBACK
+			show_msg("assets/msg-rendering.png")
 			compile_frames()
 			stop_live_stream()
-			program_state = STATE.PLAYBACK
 			play_video()
-			program_state = STATE.LIVE
 			start_live_stream()
+			program_state = STATE.LIVE
 
 def restore_project_frame():
 	global project_frame
