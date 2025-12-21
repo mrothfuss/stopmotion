@@ -25,6 +25,9 @@ class STATE(Enum):
 	LIVE = 1
 	CAPTURE = 2
 	PLAYBACK = 3
+	UNDO = 4
+	SAVE = 5
+	MENU = 6
 
 program_state = STATE.PENDING
 live_process = False
@@ -70,16 +73,17 @@ def show_msg(path):
 		overlay_thread.join()
 
 	if path:
-		overlay_img="%s/overlay.png" % (project_dir)
-		shutil.copy(path, overlay_img)
+		message_img="%s/message.png" % (project_dir)
+		shutil.copy(path, message_img)
 		live_process.stdin.write(b"logo_solid\n")
-		live_process.stdin.write(b"logo_update\n")
+		live_process.stdin.write(b"logo_message\n")
 		live_process.stdin.flush()
 	else:
 		live_process.stdin.write(b"logo_transparent\n")
-		update_overlay()
+		live_process.stdin.write(b"logo_overlay\n")
+		live_process.stdin.flush()
 
-def update_overlay_thread():
+def update_overlay():
 	global live_process
 	global project_frame
 
@@ -98,12 +102,12 @@ def update_overlay_thread():
 		
 		if project_frame == draw_frame:
 			if live_process:
-				live_process.stdin.write(b"logo_update\n")
+				live_process.stdin.write(b"logo_overlay\n")
 				live_process.stdin.flush()
 			return
 
 
-def update_overlay():
+def update_overlay_fork():
 	global overlay_thread
 
 	if overlay_thread:
@@ -111,7 +115,7 @@ def update_overlay():
 			return
 		overlay_thread.join()
 	
-	overlay_thread = Thread(target = update_overlay_thread)
+	overlay_thread = Thread(target = update_overlay)
 	overlay_thread.start()
 
 def capture_frame():
@@ -132,24 +136,26 @@ def capture_frame():
 	project_frame = project_frame + 1
 	new_img="%s/frame_%05d.png" % (project_dir, project_frame)
 	shutil.move(last_img, new_img)
-	update_overlay()
+	update_overlay_fork()
+
+def reset_overlay():
+	overlay_img="%s/overlay.png" % (project_dir)
+	shutil.copy("./assets/blank-overlay.png", overlay_img)
 
 def start_live_stream():
 	global project_frame
 	global live_process
 
 	print("START STREAM")
+	reset_overlay()
 	overlay_img="%s/overlay.png" % (project_dir)
-	shutil.copy("./assets/blank-overlay.png", overlay_img)
 	subprocess.run(["v4l2-ctl", "--set-ctrl", "auto_exposure=1,focus_automatic_continuous=0"])
 	live_process = subprocess.Popen(["cvlc", "-I", "luaintf", "--lua-intf", "stopmotion", "--sub-filter", "logo", "--logo-file", overlay_img, \
 		"--logo-opacity", "127", "--logo-position", "0", "v4l2:///dev/video0", \
 		"--video-filter=transform", "--transform-type=180"], \
 		stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.PIPE)
-	update_overlay()
+	update_overlay_fork()
 	subprocess.run(["v4l2-ctl", "--set-ctrl", "focus_absolute=240,saturation=80,brightness=30,contrast=64,zoom_absolute=4"])
-
-	return
 
 def stop_live_stream():
 	global live_process
@@ -170,9 +176,11 @@ def compile_frames():
 	preview_mp4 = "%s/video.mp4" % (project_dir)
 	last_img="%s/frame_%05d.png" % (project_dir, project_frame)
 
-	if os.stat(last_img).st_mtime > os.stat(preview_mp4).st_mtime:
-		print("REPLACING VIDEO")
-		subprocess.run(["ffmpeg", "-y", "-framerate", str(framerate), "-i", frame_template, "-c:v", "h264_v4l2m2m", "-b:v", "2M", preview_mp4])
+	if os.path.exists(preview_mp4):
+		if os.stat(last_img).st_mtime < os.stat(preview_mp4).st_mtime:
+			return
+	print("REPLACING VIDEO")
+	subprocess.run(["ffmpeg", "-y", "-framerate", str(framerate), "-i", frame_template, "-c:v", "h264_v4l2m2m", "-b:v", "2M", preview_mp4])
 
 def play_video():
 	preview_mp4 = "%s/video.mp4" % (project_dir)
@@ -181,22 +189,61 @@ def play_video():
 		stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.PIPE)
 	live_process.wait()
 
+def remove_frame():
+	global project_frame
+	
+	if project_frame == 0:
+		return
+
+	# remove last frame
+	last_img="%s/frame_%05d.png" % (project_dir, project_frame)
+	os.remove(last_img)
+	project_frame = project_frame - 1
+
+	# touch (new) last frame
+	if project_frame != 0:
+		last_img="%s/frame_%05d.png" % (project_dir, project_frame)
+		current_time = time.time()
+		os.utime(last_img, (current_time, current_time))
+	else:
+		reset_overlay()
+
+def free_space():
+	return
+
+def finish_project():
+	global project_frame
+
+	if project_frame != 0:
+		compile_frames()
+
+		now = datetime.datetime.now()
+		dstr = now.strftime("%y%m%d_%H%M%S")
+		dest_dir = "%s/%s" % (capture_dir, dstr)
+
+		shutil.move(project_dir, dest_dir)
+		os.makedirs(project_dir, exist_ok=True)
+		reset_overlay()
+		project_frame = 0
+	show_msg(False)
+
 def change_state(next_state):
 	global program_state
 
-	if(program_state == STATE.PENDING):
-		if(next_state == STATE.LIVE):
+	if program_state == STATE.PENDING:
+		if next_state == STATE.LIVE:
 			program_state = STATE.LIVE
 			start_live_stream()
-	if(program_state == STATE.LIVE):
-		if(next_state == STATE.CAPTURE):
+		return
+	if program_state == STATE.LIVE:
+		if next_state == STATE.CAPTURE:
 			program_state = STATE.CAPTURE
 			capture_frame()
 			program_state = STATE.LIVE
-		if(next_state == STATE.PENDING):
+		if next_state == STATE.PENDING:
 			program_state = STATE.PENDING
 			stop_live_stream()
-		if(next_state == STATE.PLAYBACK):
+		if next_state == STATE.PLAYBACK:
 			program_state = STATE.PLAYBACK
 			show_msg("assets/msg-rendering.png")
 			compile_frames()
@@ -204,6 +251,27 @@ def change_state(next_state):
 			play_video()
 			start_live_stream()
 			program_state = STATE.LIVE
+		if next_state == STATE.UNDO:
+			program_state = STATE.UNDO
+			show_msg("assets/msg-undo.png")
+			remove_frame()
+			restore_project_frame()
+			update_overlay()
+			show_msg(False)
+			program_state = STATE.LIVE
+		if next_state == STATE.SAVE:
+			program_state = STATE.SAVE
+			show_msg("assets/msg-save.png")
+		return
+	if program_state == STATE.SAVE:
+		if next_state == STATE.SAVE:
+			show_msg("assets/msg-saving.png")
+			finish_project()
+			program_state = STATE.LIVE
+		if next_state == STATE.MENU:
+			show_msg(False)
+			program_state = STATE.LIVE
+		return
 
 def restore_project_frame():
 	global project_frame
@@ -232,6 +300,7 @@ def btn_white(channel):
 def btn_yellow(channel):
 	if GPIO.input(channel) == GPIO.LOW:
 		print("Yellow ▼  at " + str(datetime.datetime.now()))
+		change_state(STATE.UNDO)
 	else:
 		print("Yellow  ▲ at " + str(datetime.datetime.now()))
 # GPIO 23
@@ -250,12 +319,14 @@ def btn_red(channel):
 # GPIO 12
 def btn_blue(channel):
 	if GPIO.input(channel) == GPIO.LOW:
+		change_state(STATE.SAVE)
 		print("Blue ▼  at " + str(datetime.datetime.now()))
 	else:
 		print("Blue  ▲ at " + str(datetime.datetime.now()))
 # GPIO 16
 def btn_black(channel):
 	if GPIO.input(channel) == GPIO.LOW:
+		change_state(STATE.MENU)
 		print("Black ▼  at " + str(datetime.datetime.now()))
 	else:
 		print("Black  ▲ at " + str(datetime.datetime.now()))

@@ -266,9 +266,18 @@ function logo_transparent(name, client, value)
     end
 end
 
-function logo_update(name, client, value)
+function logo_message(name, client, value)
     local vout = vlc.object.vout()
     if vout then
+            vlc.var.set(vout, "logo-file", "./recordings/current/message.png" )
+	    vlc.var.trigger_callback(vout, "logo-file")
+    end
+end
+
+function logo_overlay(name, client, value)
+    local vout = vlc.object.vout()
+    if vout then
+            vlc.var.set(vout, "logo-file", "./recordings/current/overlay.png" )
 	    vlc.var.trigger_callback(vout, "logo-file")
     end
 end
@@ -638,7 +647,8 @@ commands_ordered = {
     { "snapshot"; { func = common.snapshot; help = "take video snapshot" } };
     { "strack"; { func = strack; args = "[X]"; help = "set/get subtitle track" } };
     { "hotkey"; { func = hotkey; args = "[hotkey name]"; help = "simulate hotkey press"; adv = true; aliases = { "key" } } };
-    { "logo_update"; { func = logo_update; help = "Reload Logo File" } };
+    { "logo_overlay"; { func = logo_overlay; help = "Reload Logo Overlay" } };
+    { "logo_message"; { func = logo_message; help = "Reload Logo Message" } };
     { "logo_solid"; { func = logo_solid; help = "Solid Logo File" } };
     { "logo_transparent"; { func = logo_transparent; help = "Transparent Logo File" } };
     { "" };
