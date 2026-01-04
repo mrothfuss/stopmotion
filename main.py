@@ -236,6 +236,10 @@ def change_state(next_state):
 			start_live_stream()
 		return
 	if program_state == STATE.LIVE:
+		if next_state == STATE.MENU:
+			program_state = STATE.PENDING
+			stop_live_stream()
+			subprocess.run(["sudo", "poweroff"])
 		if next_state == STATE.CAPTURE:
 			program_state = STATE.CAPTURE
 			capture_frame()
